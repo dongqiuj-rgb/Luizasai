@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>Luiza Flash Card</title>
+    <title>Luiza Flashcards</title>
     <style>
         * {
             box-sizing: border-box;
@@ -67,7 +67,7 @@
             cursor: pointer;
             transition: all 0.3s;
             font-weight: 600;
-            min-height: 44px; /* 苹果推荐的最小触摸目标 */
+            min-height: 44px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -117,7 +117,7 @@
             font-size: 1rem;
             -webkit-user-select: text;
             user-select: text;
-            min-height: 44px; /* 优化触摸体验 */
+            min-height: 44px;
         }
         
         textarea {
@@ -135,7 +135,7 @@
             font-size: 1rem;
             font-weight: 600;
             transition: background-color 0.3s;
-            min-height: 44px; /* 苹果推荐的最小触摸目标 */
+            min-height: 44px;
         }
         
         button:hover {
@@ -221,7 +221,7 @@
             font-weight: 600;
             cursor: pointer;
             min-width: 150px;
-            min-height: 44px; /* 苹果推荐的最小触摸目标 */
+            min-height: 44px;
         }
         
         .again {
@@ -280,7 +280,6 @@
             color: #7f8c8d;
         }
         
-        /* 手机端优化 */
         @media (max-width: 768px) {
             .container {
                 padding: 10px;
@@ -326,7 +325,6 @@
             }
         }
 
-        /* 小屏幕手机优化 */
         @media (max-width: 480px) {
             .container {
                 padding: 5px;
@@ -355,7 +353,7 @@
     <div class="container">
         <header>
             <h1>Luiza Flashcards</h1>
-            <p class="subtitle">By @sai</p>
+            <p class="subtitle">by@sai</p>
         </header>
         
         <div class="tabs">
@@ -437,7 +435,6 @@
     </div>
 
     <script>
-        // Data model
         let cards = JSON.parse(localStorage.getItem('ankiCards')) || [];
         let studySession = {
             currentCardIndex: 0,
@@ -445,7 +442,6 @@
             studiedToday: 0
         };
 
-        // DOM elements
         const tabs = document.querySelectorAll('.tab');
         const contents = document.querySelectorAll('.content');
         const cardForm = document.getElementById('card-form');
@@ -465,17 +461,33 @@
         const cardInfo = document.getElementById('card-info');
         const difficultyBtns = document.querySelectorAll('.difficulty-btn');
 
-        // Initialize - automatically start studying
         document.addEventListener('DOMContentLoaded', function() {
+            // 修复旧数据：为现有卡片添加ratedAt时间戳
+            migrateOldData();
             loadCards();
             updateStats();
             setupEventListeners();
-            startStudySession(); // Automatically start studying
+            startStudySession();
         });
 
-        // Set up event listeners
+        // 数据迁移：为旧版本卡片添加ratedAt时间戳
+        function migrateOldData() {
+            let needsSave = false;
+            cards.forEach(card => {
+                if (!card.hasOwnProperty('ratedAt') && card.nextReview) {
+                    // 为旧数据计算ratedAt
+                    const reviewTime = new Date(card.nextReview).getTime();
+                    const intervalMs = card.interval * 24 * 60 * 60 * 1000;
+                    card.ratedAt = reviewTime - intervalMs;
+                    needsSave = true;
+                }
+            });
+            if (needsSave) {
+                saveCards();
+            }
+        }
+
         function setupEventListeners() {
-            // Tab switching
             tabs.forEach(tab => {
                 tab.addEventListener('click', () => {
                     const tabId = tab.getAttribute('data-tab');
@@ -489,14 +501,12 @@
                     if (tabId === 'stats') {
                         updateStats();
                     } else if (tabId === 'study') {
-                        // Refresh and restart study session when switching to study tab
                         loadCards();
                         startStudySession();
                     }
                 });
             });
             
-            // Add card form
             cardForm.addEventListener('submit', function(e) {
                 e.preventDefault();
                 
@@ -509,7 +519,6 @@
                 }
             });
             
-            // Show answer button
             showAnswerBtn.addEventListener('click', function() {
                 cardBack.style.display = 'block';
                 showAnswerBtn.style.display = 'none';
@@ -517,7 +526,6 @@
                 updateDifficultyButtons();
             });
             
-            // Difficulty buttons
             document.querySelectorAll('.difficulty-btn').forEach(button => {
                 button.addEventListener('click', function() {
                     const difficulty = this.textContent.split(' ')[0];
@@ -526,37 +534,37 @@
             });
         }
 
-        // Load cards and refresh study pool
         function loadCards() {
-            const now = new Date();
-            
-            // Separate cards into due cards and new cards
+            const now = new Date().getTime();
             const dueCards = [];
             const newCards = [];
             
             cards.forEach(card => {
-                // A card is new if it has never been reviewed OR if it was marked as new again
                 const isNewCard = card.reviewCount === 0 || card.isNew;
                 
                 if (isNewCard) {
-                    // New cards are always available for study
                     newCards.push(card);
-                } else if (new Date(card.nextReview) <= now) {
-                    // Mature cards that are due
+                } else if (isCardDue(card, now)) {
                     dueCards.push(card);
                 }
             });
             
-            // Combine due cards and new cards for study (new cards first)
             studySession.studyPool = [...newCards, ...dueCards];
-            
-            // Update UI
             remainingCards.textContent = dueCards.length;
             newCardsElem.textContent = newCards.length;
             renderCardList();
         }
 
-        // Render card list
+        // 修复：使用时间戳检查卡片是否到期（支持关机计时）
+        function isCardDue(card, currentTime) {
+            if (!card.ratedAt || !card.interval) {
+                return true; // 如果没有时间数据，默认到期
+            }
+            
+            const nextReviewTime = card.ratedAt + (card.interval * 24 * 60 * 60 * 1000);
+            return currentTime >= nextReviewTime;
+        }
+
         function renderCardList() {
             if (cards.length === 0) {
                 emptyCards.style.display = 'block';
@@ -569,7 +577,6 @@
                     const cardItem = document.createElement('div');
                     cardItem.className = 'card-item';
                     
-                    // Determine card status
                     let status = 'New';
                     if (card.reviewCount > 0) {
                         if (card.isNew) {
@@ -583,7 +590,7 @@
                         <div class="card-content">
                             <strong>${card.front}</strong>
                             <p>${card.back}</p>
-                            <small>Status: ${status} | Next review: ${formatDate(card.nextReview)}</small>
+                            <small>Status: ${status} | Next review: ${formatDate(getNextReviewTime(card))}</small>
                             <div class="card-info">
                                 Reviews: ${card.reviewCount} | 
                                 Interval: ${card.interval > 0 ? formatInterval(card.interval) : 'New'} | 
@@ -601,40 +608,48 @@
             cardCount.textContent = cards.length;
         }
 
-        // Add card
+        // 修复：根据时间戳计算下次复习时间
+        function getNextReviewTime(card) {
+            if (card.reviewCount === 0 || card.isNew) {
+                return new Date(); // 新卡立即可复习
+            }
+            if (card.ratedAt && card.interval) {
+                return new Date(card.ratedAt + (card.interval * 24 * 60 * 60 * 1000));
+            }
+            return new Date(); // 默认返回当前时间
+        }
+
         function addCard(front, back) {
             const newCard = {
                 front,
                 back,
-                interval: 0, // 0 means it's a new card
+                interval: 0,
                 ease: 2.5,
                 nextReview: new Date(),
                 reviewCount: 0,
                 correctCount: 0,
-                isNew: true, // Mark as new card
-                created: new Date().toISOString()
+                isNew: true,
+                created: new Date().toISOString(),
+                ratedAt: new Date().getTime() // 修复：添加评级时间戳
             };
             
             cards.push(newCard);
             saveCards();
-            loadCards(); // Refresh study pool
-            startStudySession(); // Restart study session with new card
+            loadCards();
+            startStudySession();
         }
 
-        // Delete card
         function deleteCard(index) {
             if (confirm('Are you sure you want to delete this card?')) {
                 cards.splice(index, 1);
                 saveCards();
-                loadCards(); // Refresh the study pool
-                startStudySession(); // Restart study session
+                loadCards();
+                startStudySession();
             }
         }
 
-        // Start study session
         function startStudySession() {
             if (studySession.studyPool.length === 0) {
-                // No cards available
                 cardFront.textContent = 'No cards available for study. Add some cards first!';
                 cardBack.style.display = 'none';
                 showAnswerBtn.style.display = 'none';
@@ -647,10 +662,8 @@
             showNextCard();
         }
 
-        // Show next card
         function showNextCard() {
             if (studySession.currentCardIndex >= studySession.studyPool.length) {
-                // Study session ended - refresh and restart
                 loadCards();
                 if (studySession.studyPool.length > 0) {
                     studySession.currentCardIndex = 0;
@@ -672,28 +685,23 @@
             showAnswerBtn.style.display = 'block';
             difficultyButtons.style.display = 'none';
             
-            // Show card info
             const isNewCard = currentCard.reviewCount === 0 || currentCard.isNew;
             cardInfo.textContent = `Status: ${isNewCard ? 'New' : 'Review'} | Reviews: ${currentCard.reviewCount}`;
             
-            // Update progress
             const remaining = studySession.studyPool.length - studySession.currentCardIndex;
             cardInfo.textContent += ` | Cards remaining: ${remaining}`;
         }
 
-        // Update difficulty buttons with next review times
         function updateDifficultyButtons() {
             const currentCard = studySession.studyPool[studySession.currentCardIndex];
             const isNewCard = currentCard.reviewCount === 0 || currentCard.isNew;
             
             if (isNewCard) {
-                // For new cards
                 difficultyBtns[0].textContent = 'Again (1 min)';
                 difficultyBtns[1].textContent = 'Hard (5 min)';
                 difficultyBtns[2].textContent = 'Good (15 min)';
                 difficultyBtns[3].textContent = 'Easy (1 day)';
             } else {
-                // For mature cards
                 const intervals = calculateIntervals(currentCard);
                 difficultyBtns[0].textContent = `Again (1 min)`;
                 difficultyBtns[1].textContent = `Hard (${formatInterval(intervals.hard)})`;
@@ -702,11 +710,9 @@
             }
         }
 
-        // Calculate intervals for mature cards
         function calculateIntervals(card) {
-            // Anki's algorithm for mature cards
-            const againInterval = 1 / (24 * 60); // 1 minute in days
-            const hardInterval = Math.max(card.interval * 1.2, 5/(24*60)); // At least 5 minutes
+            const againInterval = 1 / (24 * 60);
+            const hardInterval = Math.max(card.interval * 1.2, 5/(24*60));
             const goodInterval = card.interval * card.ease;
             const easyInterval = card.interval * card.ease * 1.3;
             
@@ -718,13 +724,11 @@
             };
         }
 
-        // Rate card
         function rateCard(difficulty) {
             const currentCard = studySession.studyPool[studySession.currentCardIndex];
             const originalCardIndex = cards.findIndex(card => card.front === currentCard.front);
             const isNewCard = currentCard.reviewCount === 0 || currentCard.isNew;
             
-            // Update card data
             cards[originalCardIndex].reviewCount++;
             
             let interval;
@@ -732,39 +736,32 @@
             let resetToNew = false;
             
             if (isNewCard) {
-                // For new cards
                 switch(difficulty) {
                     case 'Again':
-                        interval = 1 / (24 * 60); // 1 minute in days
+                        interval = 1 / (24 * 60);
                         easeChange = -0.2;
-                        // Keep as new card
                         cards[originalCardIndex].isNew = true;
                         break;
                     case 'Hard':
-                        interval = 5 / (24 * 60); // 5 minutes in days
+                        interval = 5 / (24 * 60);
                         easeChange = -0.15;
-                        // Keep as new card
                         cards[originalCardIndex].isNew = true;
                         break;
                     case 'Good':
-                        interval = 15 / (24 * 60); // 15 minutes in days
-                        // Transition to mature card
+                        interval = 15 / (24 * 60);
                         cards[originalCardIndex].isNew = false;
                         break;
                     case 'Easy':
-                        interval = 1; // 1 day
+                        interval = 1;
                         easeChange = 0.1;
-                        // Transition to mature card
                         cards[originalCardIndex].isNew = false;
                         break;
                 }
             } else {
-                // For mature cards
                 switch(difficulty) {
                     case 'Again':
-                        interval = 1 / (24 * 60); // 1 minute in days
+                        interval = 1 / (24 * 60);
                         easeChange = -0.2;
-                        // Reset card to new status
                         resetToNew = true;
                         cards[originalCardIndex].isNew = true;
                         break;
@@ -782,45 +779,40 @@
                 }
             }
             
-            // Update ease factor
             cards[originalCardIndex].ease = Math.max(1.3, (cards[originalCardIndex].ease || 2.5) + easeChange);
             
-            // Record correct answer
             if (difficulty !== 'Again') {
                 cards[originalCardIndex].correctCount++;
             }
             
-            // Update interval (unless it's an Again on a mature card, which resets it)
+            // 修复：使用时间戳计算下次复习时间
+            const now = new Date().getTime();
+            cards[originalCardIndex].ratedAt = now; // 记录评级时间戳
+            
             if (!resetToNew) {
                 cards[originalCardIndex].interval = interval;
             } else {
-                cards[originalCardIndex].interval = 0; // Reset interval for new card
+                cards[originalCardIndex].interval = 0;
             }
             
-            // Calculate next review date
-            const nextReviewDate = new Date();
-            nextReviewDate.setTime(nextReviewDate.getTime() + (interval * 24 * 60 * 60 * 1000));
-            cards[originalCardIndex].nextReview = nextReviewDate;
+            // 为了兼容现有代码，同时保存时间对象
+            const nextReviewTime = now + (interval * 24 * 60 * 60 * 1000);
+            cards[originalCardIndex].nextReview = new Date(nextReviewTime);
             
             studySession.studiedToday++;
-            
             saveCards();
-            
-            // Move to next card and refresh study pool
             studySession.currentCardIndex++;
-            loadCards(); // Refresh study pool with updated cards
+            loadCards();
             
-            // Continue with next card or restart session
             if (studySession.currentCardIndex < studySession.studyPool.length) {
                 showNextCard();
             } else {
-                startStudySession(); // Restart with refreshed pool
+                startStudySession();
             }
             
             updateStats();
         }
 
-        // Update statistics
         function updateStats() {
             totalCardsElem.textContent = cards.length;
             todayStudiedElem.textContent = studySession.studiedToday;
@@ -833,12 +825,10 @@
             masteryElem.textContent = `${mastery}%`;
         }
 
-        // Save cards to local storage
         function saveCards() {
             localStorage.setItem('ankiCards', JSON.stringify(cards));
         }
 
-        // Format date
         function formatDate(date) {
             const dateObj = new Date(date);
             if (isToday(dateObj)) {
@@ -850,7 +840,6 @@
             }
         }
 
-        // Format interval for display
         function formatInterval(intervalInDays) {
             const minutes = Math.round(intervalInDays * 24 * 60);
             const hours = Math.round(intervalInDays * 24);
@@ -868,7 +857,6 @@
             }
         }
 
-        // Check if date is today
         function isToday(date) {
             const today = new Date();
             return date.getDate() === today.getDate() &&
@@ -876,7 +864,6 @@
                    date.getFullYear() === today.getFullYear();
         }
 
-        // Check if date is tomorrow
         function isTomorrow(date) {
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);

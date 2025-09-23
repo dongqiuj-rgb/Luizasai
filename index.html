@@ -470,10 +470,14 @@
             startStudySession();
         });
 
-        // 数据迁移：为旧版本卡片添加ratedAt时间戳
+        // 数据迁移：为旧版本卡片添加ratedAt时间戳，并补齐缺失的id
         function migrateOldData() {
             let needsSave = false;
             cards.forEach(card => {
+                if (!card.id) {
+                    card.id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                    needsSave = true;
+                }
                 if (!card.hasOwnProperty('ratedAt') && card.nextReview) {
                     // 为旧数据计算ratedAt
                     const reviewTime = new Date(card.nextReview).getTime();
@@ -621,6 +625,7 @@
 
         function addCard(front, back) {
             const newCard = {
+                id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, // 唯一ID
                 front,
                 back,
                 interval: 0,
@@ -688,7 +693,7 @@
             const isNewCard = currentCard.reviewCount === 0 || currentCard.isNew;
             cardInfo.textContent = `Status: ${isNewCard ? 'New' : 'Review'} | Reviews: ${currentCard.reviewCount}`;
             
-            const remaining = studySession.studyPool.length - studySession.currentCardIndex;
+            const remaining = Math.max(studySession.studyPool.length - studySession.currentCardIndex - 1, 0);
             cardInfo.textContent += ` | Cards remaining: ${remaining}`;
         }
 
@@ -726,7 +731,7 @@
 
         function rateCard(difficulty) {
             const currentCard = studySession.studyPool[studySession.currentCardIndex];
-            const originalCardIndex = cards.findIndex(card => card.front === currentCard.front);
+            const originalCardIndex = cards.findIndex(card => card.id === currentCard.id);
             const isNewCard = currentCard.reviewCount === 0 || currentCard.isNew;
             
             cards[originalCardIndex].reviewCount++;
@@ -803,6 +808,10 @@
             saveCards();
             studySession.currentCardIndex++;
             loadCards();
+            
+            // 评分后立即刷新顶部计数（与当前学习池一致）
+            remainingCards.textContent = studySession.studyPool.filter(c => !(c.reviewCount === 0 || c.isNew)).length;
+            newCardsElem.textContent = studySession.studyPool.filter(c => (c.reviewCount === 0 || c.isNew)).length;
             
             if (studySession.currentCardIndex < studySession.studyPool.length) {
                 showNextCard();
